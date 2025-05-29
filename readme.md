@@ -4,15 +4,12 @@
 docker compose -f 'docker-compose.yaml' up -d --build
 
 ## 1. Создание топика:
-```
-docker exec -ti broker /usr/bin/kafka-topics --create  --bootstrap-server broker:9092 --replication-factor 1 --partitions 4 --topic my_topic"
-
---property "parse.key=true" --property "key.separator=,"
-
+```bash 
+docker exec -ti broker /usr/bin/kafka-topics --create  --bootstrap-server broker:9092 --replication-factor 1 --partitions 4 --topic my_topic --property "parse.key=true" --property "key.separator=,"
 ```
 
 ## 2. Информация по топику:
-```
+```bash
 docker exec -ti broker /usr/bin/kafka-topics --bootstrap-server broker:9092 --describe --topic my_topic
 Topic: my_topic TopicId: XG9w4rF8QGa4YKbFtPg9eg PartitionCount: 4       ReplicationFactor: 1    Configs: 
         Topic: my_topic Partition: 0    Leader: 1       Replicas: 1     Isr: 1
@@ -21,7 +18,7 @@ Topic: my_topic TopicId: XG9w4rF8QGa4YKbFtPg9eg PartitionCount: 4       Replicat
         Topic: my_topic Partition: 3    Leader: 1       Replicas: 1     Isr: 1
 ```
 ## 3. Запись сообщений в топик (в формате key-value)
-```
+```bash
 docker exec -ti broker /usr/bin/kafka-console-producer --bootstrap-server broker:9092 --topic my_topic  --property "parse.key=true" --property "key.separator=,"
 >k1,v1
 >k2,v2
@@ -32,9 +29,8 @@ docker exec -ti broker /usr/bin/kafka-console-producer --bootstrap-server broker
 ```
 
 ## 4. Чтение сообщений
-
+```bash
 docker exec -ti broker /usr/bin/kafka-console-consumer --bootstrap-server broker:9092 --topic my_topic --from-beginning
-```
 v1
 v2
 v3
@@ -48,10 +44,8 @@ Processed a total of 5 messages
 
 ![my_topic](/img/msg_in_topic.jpg)
 
-
 ## 5. Список всех топиков
-
-```
+```bash
 docker exec -ti broker /usr/bin/kafka-topics --list  --bootstrap-server broker:9092
 __connect-config
 __connect-offsets
