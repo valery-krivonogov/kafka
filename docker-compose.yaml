@@ -1,0 +1,201 @@
+version: '3.9'
+
+services:
+  broker:
+    # Apple M1 Chip
+    # platform: linux/amd64
+    image: confluentinc/cp-kafka:7.4.0
+    container_name: broker
+    hostname: broker
+    restart: always
+    env_file:
+      - kafka.env
+    environment:
+      KAFKA_NODE_ID: 1
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://broker:29092,PLAINTEXT_HOST://localhost:9092
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_JMX_PORT: 9101
+      KAFKA_JMX_HOSTNAME: broker
+      KAFKA_JMX_OPTS: -Dcom.sun.management.jmxremote -Dcom.sun.management.jmxremote.authenticate=false -Dcom.sun.management.jmxremote.ssl=false -Djava.rmi.server.hostname=broker -Dcom.sun.management.jmxremote.rmi.port=9101
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@broker:29093
+      KAFKA_LISTENERS: PLAINTEXT://broker:29092,CONTROLLER://broker:29093,PLAINTEXT_HOST://0.0.0.0:9092
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      # KAFKA_LOG_DIRS: /tmp/kraft-combined-logs
+      KAFKA_LOG_DIRS: /var/lib/kafka/data
+      # Replace CLUSTER_ID with a unique base64 UUID using "bin/kafka-storage.sh random-uuid" 
+      # See https://docs.confluent.io/kafka/operations-tools/kafka-tools.html#kafka-storage-sh
+      CLUSTER_ID: 'MkU3OEVBNTcwNTJENDM2Qk'
+    ports:
+      - 9092:9092
+      - 9101:9101
+    volumes:
+      - broker_logdir:/var/lib/kafka/data
+    networks:
+      - kafka-network
+
+  schema-registry:
+    # Apple M1 Chip
+    # platform: linux/amd64
+    image: confluentinc/cp-schema-registry:7.4.0
+    container_name: schema-registry
+    hostname: schema-registry
+    restart: always
+    env_file:
+      - kafka.env
+    environment:
+      SCHEMA_REGISTRY_HOST_NAME: schema-registry
+      SCHEMA_REGISTRY_KAFKASTORE_BOOTSTRAP_SERVERS: broker:29092
+      SCHEMA_REGISTRY_LISTENERS: http://0.0.0.0:8081
+      SCHEMA_REGISTRY_KAFKASTORE_TOPIC: __schemas
+    ports:
+      - 8081:8081
+    networks:
+      - kafka-network
+    depends_on:
+      - broker
+
+  rest-proxy:
+    # Apple M1 Chip
+    # platform: linux/amd64
+    image: confluentinc/cp-kafka-rest:7.4.0
+    container_name: rest-proxy
+    hostname: rest-proxy
+    restart: always
+    env_file:
+      - kafka.env
+    environment:
+      KAFKA_REST_HOST_NAME: rest-proxy
+      KAFKA_REST_BOOTSTRAP_SERVERS: broker:29092
+      KAFKA_REST_LISTENERS: http://0.0.0.0:8082
+      KAFKA_REST_SCHEMA_REGISTRY_URL: http://schema-registry:8081
+    ports:
+      - 8082:8082
+    networks:
+      - kafka-network
+    depends_on:
+      - broker
+      - schema-registry
+
+  kafka-connect:
+    # Apple M1 Chip
+    # platform: linux/amd64
+    image: confluentinc/cp-kafka-connect:7.4.0
+    container_name: kafka-connect
+    hostname: kafka-connect
+    restart: always
+    env_file:
+      - kafka.env
+    environment:
+      CONNECT_BOOTSTRAP_SERVERS: broker:29092
+      CONNECT_REST_ADVERTISED_HOST_NAME: kafka-connect
+      CONNECT_GROUP_ID: kafka-connect
+      CONNECT_CONFIG_STORAGE_TOPIC: __connect-config
+      CONNECT_OFFSET_STORAGE_TOPIC: __connect-offsets
+      CONNECT_STATUS_STORAGE_TOPIC: __connect-status
+      CONNECT_CONFIG_STORAGE_REPLICATION_FACTOR: 1
+      CONNECT_OFFSET_STORAGE_REPLICATION_FACTOR: 1
+      CONNECT_STATUS_STORAGE_REPLICATION_FACTOR: 1
+      CONNECT_OFFSET_FLUSH_INTERVAL_MS: 10000
+      CONNECT_KEY_CONVERTER: org.apache.kafka.connect.storage.StringConverter
+      CONNECT_VALUE_CONVERTER: io.confluent.connect.avro.AvroConverter
+      CONNECT_VALUE_CONVERTER_SCHEMA_REGISTRY_URL: http://schema-registry:8081
+      # CLASSPATH required due to CC-2422
+      CLASSPATH: /usr/share/java/monitoring-interceptors/monitoring-interceptors-7.4.0.jar
+      CONNECT_PRODUCER_INTERCEPTOR_CLASSES: io.confluent.monitoring.clients.interceptor.MonitoringProducerInterceptor
+      CONNECT_CONSUMER_INTERCEPTOR_CLASSES: io.confluent.monitoring.clients.interceptor.MonitoringConsumerInterceptor
+      CONNECT_PLUGIN_PATH: /usr/share/java,/usr/share/confluent-hub-components,/data
+      CONNECT_LOG4J_LOGGERS: org.apache.zookeeper=ERROR,org.I0Itec.zkclient=ERROR,org.reflections=ERROR
+    command:
+      - bash
+      - -c
+      - |
+        confluent-hub install --no-prompt confluentinc/kafka-connect-datagen:0.6.0
+        confluent-hub install --no-prompt confluentinc/kafka-connect-s3:10.5.0
+        confluent-hub install --no-prompt confluentinc/connect-transforms:1.4.3
+        /etc/confluent/docker/run &
+        sleep infinity
+    ports:
+      - 8083:8083
+    volumes:
+      - $PWD/data:/data
+    networks:
+      - kafka-network
+    depends_on:
+      - broker
+      - schema-registry
+
+  ksqldb-server:
+    # Apple M1 Chip
+    # platform: linux/amd64
+    image: confluentinc/cp-ksqldb-server:7.4.0
+    container_name: ksqldb-server
+    hostname: ksqldb-server
+    restart: always
+    env_file:
+      - kafka.env
+    environment:
+      KSQL_CONFIG_DIR: /etc/ksql
+      KSQL_BOOTSTRAP_SERVERS: broker:29092
+      KSQL_HOST_NAME: ksqldb-server
+      KSQL_LISTENERS: http://0.0.0.0:8088
+      KSQL_CACHE_MAX_BYTES_BUFFERING: 0
+      KSQL_KSQL_SCHEMA_REGISTRY_URL: http://schema-registry:8081
+      KSQL_PRODUCER_INTERCEPTOR_CLASSES: io.confluent.monitoring.clients.interceptor.MonitoringProducerInterceptor
+      KSQL_CONSUMER_INTERCEPTOR_CLASSES: io.confluent.monitoring.clients.interceptor.MonitoringConsumerInterceptor
+      KSQL_KSQL_CONNECT_URL: http://kafka-connect:8083
+      KSQL_KSQL_LOGGING_PROCESSING_TOPIC_REPLICATION_FACTOR: 1
+      KSQL_KSQL_LOGGING_PROCESSING_TOPIC_AUTO_CREATE: true
+      KSQL_KSQL_LOGGING_PROCESSING_STREAM_AUTO_CREATE: true
+    ports:
+      - 8088:8088
+    networks:
+      - kafka-network
+    depends_on:
+      - broker
+      - schema-registry
+      - kafka-connect
+  
+  kafka-ui:
+    # Apple M1 Chip
+    # platform: linux/amd64
+    image: provectuslabs/kafka-ui:master
+    # image: provectuslabs/kafka-ui:latest
+    container_name: kafka-ui
+    restart: always
+    env_file:
+      - kafka.env
+    environment:
+      DYNAMIC_CONFIG_ENABLED: true
+      KAFKA_CLUSTERS_0_NAME: kafka-cluster
+      KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: broker:29092
+      KAFKA_CLUSTERS_0_METRICS_PORT: 9101
+      KAFKA_CLUSTERS_0_SCHEMAREGISTRY: http://schema-registry:8081
+      KAFKA_CLUSTERS_0_KAFKACONNECT_0_NAME: kafka-connect-cluster
+      KAFKA_CLUSTERS_0_KAFKACONNECT_0_ADDRESS: http://kafka-connect:8083
+      KAFKA_CLUSTERS_0_KSQLDBSERVER: http://ksqldb-server:8088
+    ports:
+      - 8888:8080
+    volumes:
+      #- /tmp/config.yml:/etc/kafkaui/dynamic_config.yaml
+      - kafkaui_dir:/etc/kafkaui
+    networks:
+      - kafka-network
+    depends_on:
+      - broker
+      - schema-registry
+      - kafka-connect
+      - ksqldb-server
+      
+networks:
+  kafka-network:
+    driver: bridge
+
+volumes:
+  broker_logdir:
+  kafkaui_dir:
